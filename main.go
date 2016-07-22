@@ -14,8 +14,24 @@
 
 package main
 
-import "fmt"
+import (
+	"github.com/netflix/rend-http/httph"
+	"github.com/netflix/rend/handlers"
+	"github.com/netflix/rend/orcas"
+	"github.com/netflix/rend/server"
+)
 
 func main() {
-	fmt.Println("Hello, world!")
+	largs := server.ListenArgs{
+		Type: server.ListenTCP,
+		Port: 11211,
+	}
+
+	server.ListenAndServe(
+		largs,
+		server.Default,
+		orcas.L1Only,
+		httph.New("localhost", 8080, "evcache"),
+		handlers.NilHandler,
+	)
 }

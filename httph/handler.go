@@ -15,37 +15,136 @@
 package httph
 
 import (
+	"bytes"
+	"fmt"
+	"io"
+	"io/ioutil"
+	"log"
 	"net/http"
+	"strconv"
 
 	"github.com/netflix/rend/common"
 	"github.com/netflix/rend/handlers"
 )
 
 type Handler struct {
-	// something here
-	client http.Client
+	urlprefix string
+	client    http.Client
 }
 
-func New() handlers.HandlerConst {
+func New(host string, port int, cache string) handlers.HandlerConst {
+	singleton := &Handler{
+		urlprefix: fmt.Sprintf("http://%s:%d/evcrest/v1.0/%s/", host, port, cache),
+		client:    http.Client{},
+	}
+
 	return func() (handlers.Handler, error) {
-		//lol
+		return singleton, nil
 	}
 }
 
+func (h *Handler) makeUrl(key []byte) string {
+	return h.urlprefix + string(key)
+}
+
 func (h *Handler) Set(cmd common.SetRequest) error {
-	//lol
+	url := h.makeUrl(cmd.Key) + "?ttl=" + strconv.Itoa(int(cmd.Exptime))
+	res, err := h.client.Post(url, "application/octet-stream", bytes.NewBuffer(cmd.Data))
+	if err != nil {
+		return err
+	}
+	// discard body to allow reuse of connection
+	if _, err := io.Copy(ioutil.Discard, res.Body); err != nil {
+		return err
+	}
+
+	switch res.StatusCode {
+	case 202:
+		return nil
+	case 400:
+		// this is a case that comes back from the server, but would only happen
+		// if the code here is incorrect
+		log.Println("Invalid request sent to POST endpoint as a part a set.")
+		log.Printf("url: %s\n", url)
+		return common.ErrInternal
+	default:
+		log.Printf("[SET] Unexpected status code in HTTP response: %d\n", res.StatusCode)
+		log.Printf("[SET] url: %s\n", url)
+		return common.ErrInternal
+	}
 }
 
 func (h *Handler) Delete(cmd common.DeleteRequest) error {
-	//lol
+	url := h.makeUrl(cmd.Key)
+	req, err := http.NewRequest("DELETE", url, nil)
+	if err != nil {
+		// this would be a bad host, port, or cache
+		return err
+	}
+	res, err := h.client.Do(req)
+	if err != nil {
+		return err
+	}
+	// discard body to allow reuse of connection
+	if _, err := io.Copy(ioutil.Discard, res.Body); err != nil {
+		return err
+	}
+
+	switch res.StatusCode {
+	case 200:
+		return nil
+	default:
+		log.Printf("[DELETE] Unexpected status code in HTTP response: %d\n", res.StatusCode)
+		log.Printf("[DELETE] url: %s\n", url)
+		return common.ErrInternal
+	}
 }
 
 func (h *Handler) Get(cmd common.GetRequest) (<-chan common.GetResponse, <-chan error) {
-	//lol
+	dataOut := make(chan common.GetResponse)
+	errorOut := make(chan error)
+	go realHandleGet(h, cmd, dataOut, errorOut)
+	return dataOut, errorOut
 }
 
 func realHandleGet(h *Handler, cmd common.GetRequest, dataOut chan common.GetResponse, errorOut chan error) {
-	//lol
+	defer close(errorOut)
+	defer close(dataOut)
+
+	for idx, key := range cmd.Keys {
+		url := h.makeUrl(key)
+		res, err := h.client.Get(url)
+		if err != nil {
+			errorOut <- err
+			return
+		}
+
+		data, err := ioutil.ReadAll(res.Body)
+
+		switch res.StatusCode {
+		case 200:
+			dataOut <- common.GetResponse{
+				Miss:   false,
+				Quiet:  cmd.Quiet[idx],
+				Opaque: cmd.Opaques[idx],
+				Flags:  0,
+				Key:    key,
+				Data:   data,
+			}
+		case 404:
+			dataOut <- common.GetResponse{
+				Miss:   true,
+				Quiet:  cmd.Quiet[idx],
+				Opaque: cmd.Opaques[idx],
+				Flags:  0,
+				Key:    key,
+			}
+		default:
+			log.Printf("[GET] Unexpected status code in HTTP response: %d\n", res.StatusCode)
+			log.Printf("[GET] url: %s\n", url)
+			errorOut <- common.ErrInternal
+		}
+	}
 }
 
 func (h *Handler) Close() error {
