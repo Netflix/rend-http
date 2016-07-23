@@ -15,13 +15,29 @@
 package main
 
 import (
+	"flag"
+
 	"github.com/netflix/rend-http/httph"
 	"github.com/netflix/rend/handlers"
 	"github.com/netflix/rend/orcas"
 	"github.com/netflix/rend/server"
 )
 
+var (
+	proxyHost string
+	proxyPort int
+	cacheName string
+)
+
+func init() {
+	flag.StringVar(&proxyHost, "proxy-host", "localhost", "Host to proxy traffic to")
+	flag.IntVar(&proxyPort, "proxy-host", 9001, "Port on host to proxy traffic to")
+	flag.StringVar(&cacheName, "cache-name", "evcache", "The cache name to proxy traffic to")
+}
+
 func main() {
+	flag.Parse()
+
 	largs := server.ListenArgs{
 		Type: server.ListenTCP,
 		Port: 11211,
@@ -31,7 +47,7 @@ func main() {
 		largs,
 		server.Default,
 		orcas.L1Only,
-		httph.New("localhost", 8080, "evcache"),
+		httph.New(proxyHost, proxyPort, cacheName),
 		handlers.NilHandler,
 	)
 }
