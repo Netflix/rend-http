@@ -49,7 +49,13 @@ func (h *Handler) makeUrl(key []byte) string {
 
 func (h *Handler) Set(cmd common.SetRequest) error {
 	url := h.makeUrl(cmd.Key) + "?ttl=" + strconv.Itoa(int(cmd.Exptime))
-	res, err := h.client.Post(url, "application/octet-stream", bytes.NewBuffer(cmd.Data))
+	req, err := http.NewRequest("PUT", url, bytes.NewBuffer(cmd.Data))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/octet-stream")
+
+	res, err := h.client.Do(req)
 	if err != nil {
 		return err
 	}
@@ -64,7 +70,7 @@ func (h *Handler) Set(cmd common.SetRequest) error {
 	case 400:
 		// this is a case that comes back from the server, but would only happen
 		// if the code here is incorrect
-		log.Println("Invalid request sent to POST endpoint as a part a set.")
+		log.Println("Invalid request sent to PUT endpoint as a part a set.")
 		log.Printf("url: %s\n", url)
 		return common.ErrInternal
 	default:
