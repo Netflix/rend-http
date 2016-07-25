@@ -1,6 +1,7 @@
 package httph_test
 
 import (
+	"fmt"
 	"io/ioutil"
 	"net/http"
 	"net/http/httptest"
@@ -15,21 +16,21 @@ import (
 
 type server struct {
 	data      map[string]string
-	senderror bool
+	forcecode int
 }
 
-func newServer(senderror bool) *server {
+func newServer(forcecode int) *server {
 	return &server{
 		data:      make(map[string]string),
-		senderror: senderror,
+		forcecode: forcecode,
 	}
 }
 
 func (s *server) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	key := strings.TrimPrefix(req.URL.Path, "/evcrest/v1.0/evcache/")
 
-	if s.senderror {
-		w.WriteHeader(500)
+	if s.forcecode > 0 {
+		w.WriteHeader(s.forcecode)
 		return
 	}
 
@@ -68,7 +69,7 @@ func (s *server) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	}
 }
 
-func handlerFromTestServer(ts *httptest.Server) (handlers.Handler, error) {
+func handlerFromTestServer(ts *httptest.Server) handlers.Handler {
 	hostAndPort := strings.TrimPrefix(ts.URL, "http://")
 	parts := strings.Split(hostAndPort, ":")
 
@@ -78,18 +79,20 @@ func handlerFromTestServer(ts *httptest.Server) (handlers.Handler, error) {
 		panic(err)
 	}
 
-	return httph.New(host, port, "evcache")()
+	handler, err := httph.New(host, port, "evcache")()
+	if err != nil {
+		panic(fmt.Sprintf("Handler creation failed: %s", err.Error()))
+	}
+
+	return handler
 }
 
 func TestGetHit(t *testing.T) {
-	s := newServer(false)
+	s := newServer(0)
 	ts := httptest.NewServer(s)
 	defer ts.Close()
 
-	handler, err := handlerFromTestServer(ts)
-	if err != nil {
-		t.Errorf("Handler creation failed: %s", err.Error())
-	}
+	handler := handlerFromTestServer(ts)
 
 	// somewhat dirty, but I don't mind
 	s.data["foo"] = "bar"
@@ -114,14 +117,11 @@ func TestGetHit(t *testing.T) {
 }
 
 func TestGetMiss(t *testing.T) {
-	s := newServer(false)
+	s := newServer(0)
 	ts := httptest.NewServer(s)
 	defer ts.Close()
 
-	handler, err := handlerFromTestServer(ts)
-	if err != nil {
-		t.Errorf("Handler creation failed: %s", err.Error())
-	}
+	handler := handlerFromTestServer(ts)
 
 	datchan, errchan := handler.Get(common.GetRequest{
 		Keys:    [][]byte{[]byte("foo")},
@@ -143,14 +143,11 @@ func TestGetMiss(t *testing.T) {
 }
 
 func TestGetError(t *testing.T) {
-	s := newServer(true)
+	s := newServer(500)
 	ts := httptest.NewServer(s)
 	defer ts.Close()
 
-	handler, err := handlerFromTestServer(ts)
-	if err != nil {
-		t.Errorf("Handler creation failed: %s", err.Error())
-	}
+	handler := handlerFromTestServer(ts)
 
 	datchan, errchan := handler.Get(common.GetRequest{
 		Keys:    [][]byte{[]byte("foo")},
@@ -163,5 +160,70 @@ func TestGetError(t *testing.T) {
 		t.Errorf("Should have received an error.\nResponse: %#v", res)
 	case err := <-errchan:
 		t.Logf("Properly received error: %s", err.Error())
+	}
+}
+
+func TestSetSuccess(t *testing.T) {
+	s := newServer(0)
+	ts := httptest.NewServer(s)
+	defer ts.Close()
+
+	handler := handlerFromTestServer(ts)
+
+	err := handler.Set(common.SetRequest{
+		Key:  []byte("foo"),
+		Data: []byte("bar"),
+	})
+
+	if err != nil {
+		t.Errorf("Failed set request: %s", err.Error())
+	}
+
+	if data, ok := s.data["foo"]; ok {
+		if data == "bar" {
+			t.Logf("Successfully performed set")
+		} else {
+			t.Errorf("Set data does not match: %s", data)
+		}
+	} else {
+		t.Errorf("No data was set")
+	}
+}
+
+func TestSetError(t *testing.T) {
+	s := newServer(500)
+	ts := httptest.NewServer(s)
+	defer ts.Close()
+
+	handler := handlerFromTestServer(ts)
+
+	err := handler.Set(common.SetRequest{
+		Key:  []byte("foo"),
+		Data: []byte("bar"),
+	})
+
+	if err != nil {
+		t.Logf("Properly received error: %s", err.Error())
+	} else {
+		t.Errorf("Should have received an error.")
+	}
+}
+
+func TestSetBadRequest(t *testing.T) {
+	s := newServer(400)
+	ts := httptest.NewServer(s)
+	defer ts.Close()
+
+	handler := handlerFromTestServer(ts)
+
+	err := handler.Set(common.SetRequest{
+		Key:  []byte("foo"),
+		Data: []byte("bar"),
+	})
+
+	if err != nil {
+		t.Logf("Properly received error: %s", err.Error())
+	} else {
+		t.Errorf("Should have received an error.")
 	}
 }
