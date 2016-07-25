@@ -24,14 +24,16 @@ import (
 )
 
 var (
-	proxyHost string
-	proxyPort int
-	cacheName string
+	listenPort int
+	proxyHost  string
+	proxyPort  int
+	cacheName  string
 )
 
 func init() {
+	flag.IntVar(&listenPort, "listen-port", 11211, "Port to listen on")
 	flag.StringVar(&proxyHost, "proxy-host", "localhost", "Host to proxy traffic to")
-	flag.IntVar(&proxyPort, "proxy-host", 9001, "Port on host to proxy traffic to")
+	flag.IntVar(&proxyPort, "proxy-port", 9001, "Port on host to proxy traffic to")
 	flag.StringVar(&cacheName, "cache-name", "evcache", "The cache name to proxy traffic to")
 }
 
@@ -40,7 +42,7 @@ func main() {
 
 	largs := server.ListenArgs{
 		Type: server.ListenTCP,
-		Port: 11211,
+		Port: listenPort,
 	}
 
 	server.ListenAndServe(
