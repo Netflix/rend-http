@@ -70,8 +70,8 @@ func (h *Handler) Set(cmd common.SetRequest) error {
 	case 400:
 		// this is a case that comes back from the server, but would only happen
 		// if the code here is incorrect
-		log.Println("Invalid request sent to PUT endpoint as a part a set.")
-		log.Printf("url: %s\n", url)
+		log.Println("[SET] Invalid request sent to PUT endpoint as a part a set.")
+		log.Printf("[SET] url: %s\n", url)
 		return common.ErrInternal
 	default:
 		log.Printf("[SET] Unexpected status code in HTTP response: %d\n", res.StatusCode)
