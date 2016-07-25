@@ -227,3 +227,45 @@ func TestSetBadRequest(t *testing.T) {
 		t.Errorf("Should have received an error.")
 	}
 }
+
+func TestDeleteSuccess(t *testing.T) {
+	s := newServer(0)
+	ts := httptest.NewServer(s)
+	defer ts.Close()
+
+	s.data["foo"] = "bar"
+
+	handler := handlerFromTestServer(ts)
+
+	err := handler.Delete(common.DeleteRequest{
+		Key: []byte("foo"),
+	})
+
+	if err != nil {
+		t.Errorf("Failed delete request: %s", err.Error())
+	}
+
+	if data, ok := s.data["foo"]; ok {
+		t.Error("Delete failed. Data: %s", data)
+	} else {
+		t.Log("Delete successful")
+	}
+}
+
+func TestDeleteError(t *testing.T) {
+	s := newServer(500)
+	ts := httptest.NewServer(s)
+	defer ts.Close()
+
+	handler := handlerFromTestServer(ts)
+
+	err := handler.Delete(common.DeleteRequest{
+		Key: []byte("foo"),
+	})
+
+	if err != nil {
+		t.Logf("Properly received error: %s", err.Error())
+	} else {
+		t.Errorf("Should have received an error.")
+	}
+}
