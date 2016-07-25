@@ -1,6 +1,6 @@
 # rend-http
 
-Rend server to proxy simple requests to an HTTP proxy.
+_Rend server to proxy simple requests to an HTTP proxy._
 
 This server only supports very basic operations: get, set, and delete. There is
 no support for any other operations. Responses to other operations are just a
