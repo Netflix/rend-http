@@ -16,6 +16,12 @@ package main
 
 import (
 	"flag"
+	"fmt"
+	"log"
+	"os"
+	"runtime"
+	"strconv"
+	"strings"
 
 	"github.com/netflix/rend-http/httph"
 	"github.com/netflix/rend/handlers"
@@ -23,33 +29,111 @@ import (
 	"github.com/netflix/rend/server"
 )
 
-var (
+type proxyinfo struct {
 	listenPort int
 	proxyHost  string
 	proxyPort  int
 	cacheName  string
-)
+}
+
+var pis = []proxyinfo{}
 
 func init() {
-	flag.IntVar(&listenPort, "listen-port", 11211, "Port to listen on")
-	flag.StringVar(&proxyHost, "proxy-host", "localhost", "Host to proxy traffic to")
-	flag.IntVar(&proxyPort, "proxy-port", 9001, "Port on host to proxy traffic to")
-	flag.StringVar(&cacheName, "cache-name", "evcache", "The cache name to proxy traffic to")
+	flag.Usage = func() {
+		fmt.Fprintf(os.Stderr, "Proxies a list of memcached protocol ports to a corresponding list of proxy hostnames, ports, and caches.\n")
+		flag.PrintDefaults()
+	}
+
+	var listenPortsStr string
+	var proxyHostsStr string
+	var proxyPortsStr string
+	var cacheNamesStr string
+
+	flag.StringVar(&listenPortsStr, "listen-ports", "", "List of TCP ports to proxy from, separated by '|'")
+	flag.StringVar(&proxyHostsStr, "proxy-hosts", "", "List of hostnames to proxy to, separated by '|'")
+	flag.StringVar(&proxyPortsStr, "proxy-ports", "", "List of ports to proxy to, separated by '|'")
+	flag.StringVar(&cacheNamesStr, "cache-names", "", "List of cache names to proxy to, separated by '|'")
+
+	flag.Parse()
+
+	if len(listenPortsStr) == 0 || len(proxyHostsStr) == 0 || len(proxyPortsStr) == 0 || len(cacheNamesStr) == 0 {
+		log.Fatalln("Error: Must provide all params: --listen-ports, --proxy-hosts, --proxy-ports, --cache-names.")
+	}
+
+	listenPortsParts := strings.Split(listenPortsStr, "|")
+	listenPorts := make([]int, len(listenPortsParts))
+	for i, p := range listenPortsParts {
+		trimmed := strings.TrimSpace(p)
+		if len(trimmed) == 0 {
+			log.Fatalln("Error: Invalid ports; must not have blank entries.")
+		}
+		temp, err := strconv.Atoi(trimmed)
+		if err != nil {
+			log.Fatalf("Error: Invalid port: %s", trimmed)
+		}
+		listenPorts[i] = temp
+	}
+
+	proxyHosts := strings.Split(proxyHostsStr, "|")
+	for i, u := range proxyHosts {
+		proxyHosts[i] = strings.TrimSpace(u)
+		if len(proxyHosts[i]) == 0 {
+			log.Fatalln("Error:Invalid domain sockets; must not have blank entries.")
+		}
+	}
+
+	proxyPortsParts := strings.Split(proxyPortsStr, "|")
+	proxyPorts := make([]int, len(proxyPortsParts))
+	for i, p := range proxyPortsParts {
+		trimmed := strings.TrimSpace(p)
+		if len(trimmed) == 0 {
+			log.Fatalln("Error: Invalid proxy ports; must not have blank entries.")
+		}
+		temp, err := strconv.Atoi(trimmed)
+		if err != nil {
+			log.Fatalf("Error: Invalid port: %s", trimmed)
+		}
+		proxyPorts[i] = temp
+	}
+
+	cacheNames := strings.Split(cacheNamesStr, "|")
+	for i, u := range cacheNames {
+		cacheNames[i] = strings.TrimSpace(u)
+		if len(cacheNames[i]) == 0 {
+			log.Fatalln("Error:Invalid domain sockets; must not have blank entries.")
+		}
+	}
+
+	if len(listenPorts) != len(proxyHosts) || len(listenPorts) != len(proxyPorts) || len(listenPorts) != len(cacheNames) {
+		log.Fatalf("Error: all lists must match in length. Got %d listen ports, %d proxy hosts, %d proxy ports, %d cache names\n",
+			len(listenPorts), len(proxyHosts), len(proxyPorts), len(cacheNames))
+	}
+
+	for i := 0; i < len(listenPorts); i++ {
+		pis = append(pis, proxyinfo{
+			listenPort: listenPorts[i],
+			proxyHost:  proxyHosts[i],
+			proxyPort:  proxyPorts[i],
+			cacheName:  cacheNames[i],
+		})
+	}
 }
 
 func main() {
-	flag.Parse()
+	for _, pi := range pis {
+		largs := server.ListenArgs{
+			Type: server.ListenTCP,
+			Port: pi.listenPort,
+		}
 
-	largs := server.ListenArgs{
-		Type: server.ListenTCP,
-		Port: listenPort,
+		go server.ListenAndServe(
+			largs,
+			server.Default,
+			orcas.L1Only,
+			httph.New(pi.proxyHost, pi.proxyPort, pi.cacheName),
+			handlers.NilHandler,
+		)
 	}
 
-	server.ListenAndServe(
-		largs,
-		server.Default,
-		orcas.L1Only,
-		httph.New(proxyHost, proxyPort, cacheName),
-		handlers.NilHandler,
-	)
+	runtime.Goexit()
 }
