@@ -60,6 +60,14 @@ func init() {
 		log.Fatalln("Error: Must provide all params: --listen-ports, --proxy-hosts, --proxy-ports, --cache-names.")
 	}
 
+	// Trim any quotes off of the args
+	trimQuotes := func(r rune) bool { return r == '"' }
+
+	listenPortsStr = strings.TrimFunc(listenPortsStr, trimQuotes)
+	proxyHostsStr = strings.TrimFunc(proxyHostsStr, trimQuotes)
+	proxyPortsStr = strings.TrimFunc(proxyPortsStr, trimQuotes)
+	cacheNamesStr = strings.TrimFunc(cacheNamesStr, trimQuotes)
+
 	listenPortsParts := strings.Split(listenPortsStr, "|")
 	listenPorts := make([]int, len(listenPortsParts))
 	for i, p := range listenPortsParts {
