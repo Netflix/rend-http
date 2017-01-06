@@ -64,20 +64,13 @@ func (h *Handler) Set(cmd common.SetRequest) error {
 		return err
 	}
 
-	switch res.StatusCode {
-	case 202:
+	if res.StatusCode >= 200 && res.StatusCode < 300 {
 		return nil
-	case 400:
-		// this is a case that comes back from the server, but would only happen
-		// if the code here is incorrect
-		log.Println("[SET] Invalid request sent to PUT endpoint as a part a set.")
-		log.Printf("[SET] url: %s\n", url)
-		return common.ErrInternal
-	default:
-		log.Printf("[SET] Unexpected status code in HTTP response: %d\n", res.StatusCode)
-		log.Printf("[SET] url: %s\n", url)
-		return common.ErrInternal
 	}
+
+	log.Printf("[SET] Unexpected status code in HTTP response: %d\n", res.StatusCode)
+	log.Printf("[SET] url: %s\n", url)
+	return common.ErrInternal
 }
 
 func (h *Handler) Delete(cmd common.DeleteRequest) error {

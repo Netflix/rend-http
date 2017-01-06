@@ -75,7 +75,7 @@ func (s *server) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 			w.WriteHeader(500)
 		}
 		s.data[key] = string(data)
-		w.WriteHeader(202)
+		w.WriteHeader(200)
 
 	case "DELETE":
 		delete(s.data, key)
