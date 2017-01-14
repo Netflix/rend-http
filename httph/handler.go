@@ -23,15 +23,41 @@ import (
 	"net/http"
 	"strconv"
 
+	"time"
+
 	"github.com/netflix/rend/common"
 	"github.com/netflix/rend/handlers"
 )
 
+const (
+
+	// NumTries is the number of times the handler will try operations before
+	// returning an error to the client
+	NumTries = 4
+	// 4 tries == 3 retries
+
+	// wait for 10, 40, and 90 ms successively on retries
+	retryDelayMultiplier = 10
+)
+
+func retryDelay(try int) {
+	// wait for 10, 40, and 90 ms successively on retries
+	if try > 0 {
+		<-time.After(time.Duration(try) * time.Millisecond * retryDelayMultiplier)
+	}
+}
+
+// Handler implements the github.com/netflix/rend/handlers.Handler interface.
+// The only operations supported right now are set, get, and delete.
 type Handler struct {
 	urlprefix string
 	client    http.Client
 }
 
+// New creates a new handler constructor function. The returned function returns
+// the same exact singleton instance of the Handler every time. This means that
+// all requests will be able to take advantage of the http keepalive on the conn
+// pool to the http proxy.
 func New(host string, port int, cache string) handlers.HandlerConst {
 	singleton := &Handler{
 		urlprefix: fmt.Sprintf("http://%s:%d/evcrest/v1.0/%s/", host, port, cache),
@@ -47,34 +73,50 @@ func (h *Handler) makeURL(key []byte) string {
 	return h.urlprefix + string(key)
 }
 
+// Set performs an HTTP PUT request on the backend server
 func (h *Handler) Set(cmd common.SetRequest) error {
 	url := h.makeURL(cmd.Key) + "?ttl=" + strconv.Itoa(int(cmd.Exptime))
-	req, err := http.NewRequest("PUT", url, bytes.NewBuffer(cmd.Data))
+
+	req, err := http.NewRequest("PUT", url, nil)
 	if err != nil {
 		return err
 	}
 	req.Header.Set("Content-Type", "application/octet-stream")
 
-	res, err := h.client.Do(req)
-	if err != nil {
-		return err
+	for i := 0; i < NumTries; i++ {
+		retryDelay(i)
+
+		// Reset body
+		req.Body = ioutil.NopCloser(bytes.NewReader(cmd.Data))
+
+		res, err := h.client.Do(req)
+		if err != nil {
+			return err
+		}
+
+		// discard and close body to allow reuse of connection
+		if _, err := io.Copy(ioutil.Discard, res.Body); err != nil {
+			return err
+		}
+		res.Body.Close()
+
+		if res.StatusCode >= 200 && res.StatusCode < 300 {
+			return nil
+		}
+
+		// Shortcut on errors that are going to fail on subsequent tries
+		if res.StatusCode == 400 || res.StatusCode == 500 {
+			return common.ErrInternal
+		}
+
+		log.Printf("[SET] Unexpected status code in HTTP response: %d\n", res.StatusCode)
+		log.Printf("[SET] url: %s\n", url)
 	}
 
-	// discard and close body to allow reuse of connection
-	if _, err := io.Copy(ioutil.Discard, res.Body); err != nil {
-		return err
-	}
-	res.Body.Close()
-
-	if res.StatusCode >= 200 && res.StatusCode < 300 {
-		return nil
-	}
-
-	log.Printf("[SET] Unexpected status code in HTTP response: %d\n", res.StatusCode)
-	log.Printf("[SET] url: %s\n", url)
 	return common.ErrInternal
 }
 
+// Delete performs an HTTP DELETE request on the backend server
 func (h *Handler) Delete(cmd common.DeleteRequest) error {
 	url := h.makeURL(cmd.Key)
 	req, err := http.NewRequest("DELETE", url, nil)
@@ -82,27 +124,38 @@ func (h *Handler) Delete(cmd common.DeleteRequest) error {
 		// this would be a bad host, port, or cache
 		return err
 	}
-	res, err := h.client.Do(req)
-	if err != nil {
-		return err
-	}
 
-	// discard and close body to allow reuse of connection
-	if _, err := io.Copy(ioutil.Discard, res.Body); err != nil {
-		return err
-	}
-	res.Body.Close()
+	for i := 0; i < NumTries; i++ {
+		retryDelay(i)
 
-	switch res.StatusCode {
-	case 200:
-		return nil
-	default:
+		res, err := h.client.Do(req)
+		if err != nil {
+			return err
+		}
+
+		// discard and close body to allow reuse of connection
+		if _, err := io.Copy(ioutil.Discard, res.Body); err != nil {
+			return err
+		}
+		res.Body.Close()
+
+		if res.StatusCode >= 200 && res.StatusCode < 300 {
+			return nil
+		}
+
+		// Shortcut on failures where subsequent requests will fail
+		if res.StatusCode == 500 {
+			return common.ErrInternal
+		}
+
 		log.Printf("[DELETE] Unexpected status code in HTTP response: %d\n", res.StatusCode)
 		log.Printf("[DELETE] url: %s\n", url)
-		return common.ErrInternal
 	}
+
+	return common.ErrInternal
 }
 
+// Get performs an HTTP GET request on the backend server for each key given
 func (h *Handler) Get(cmd common.GetRequest) (<-chan common.GetResponse, <-chan error) {
 	dataOut := make(chan common.GetResponse)
 	errorOut := make(chan error)
@@ -114,45 +167,68 @@ func realHandleGet(h *Handler, cmd common.GetRequest, dataOut chan common.GetRes
 	defer close(errorOut)
 	defer close(dataOut)
 
+outer:
 	for idx, key := range cmd.Keys {
 		url := h.makeURL(key)
-		res, err := h.client.Get(url)
+		req, err := http.NewRequest("GET", url, nil)
 		if err != nil {
 			errorOut <- err
 			return
 		}
 
-		data, err := ioutil.ReadAll(res.Body)
-
-		// Close budy to allow reuse of connection
-		res.Body.Close()
-
-		switch res.StatusCode {
-		case 200:
-			dataOut <- common.GetResponse{
-				Miss:   false,
-				Quiet:  cmd.Quiet[idx],
-				Opaque: cmd.Opaques[idx],
-				Flags:  0,
-				Key:    key,
-				Data:   data,
+		for i := 0; i < NumTries; i++ {
+			res, err := h.client.Do(req)
+			if err != nil {
+				errorOut <- err
+				return
 			}
-		case 404:
-			dataOut <- common.GetResponse{
-				Miss:   true,
-				Quiet:  cmd.Quiet[idx],
-				Opaque: cmd.Opaques[idx],
-				Flags:  0,
-				Key:    key,
+
+			data, err := ioutil.ReadAll(res.Body)
+
+			// Close body to allow reuse of connection
+			res.Body.Close()
+
+			switch res.StatusCode {
+			case 200:
+				dataOut <- common.GetResponse{
+					Miss:   false,
+					Quiet:  cmd.Quiet[idx],
+					Opaque: cmd.Opaques[idx],
+					Flags:  0,
+					Key:    key,
+					Data:   data,
+				}
+
+				continue outer
+
+			case 404:
+				dataOut <- common.GetResponse{
+					Miss:   true,
+					Quiet:  cmd.Quiet[idx],
+					Opaque: cmd.Opaques[idx],
+					Flags:  0,
+					Key:    key,
+				}
+
+				continue outer
+
+			case 500:
+				// Don't retry for a request that will very likely fail
+				errorOut <- common.ErrInternal
+				return
+
+			default:
+				log.Printf("[GET] Unexpected status code in HTTP response: %d\n", res.StatusCode)
+				log.Printf("[GET] url: %s\n", url)
 			}
-		default:
-			log.Printf("[GET] Unexpected status code in HTTP response: %d\n", res.StatusCode)
-			log.Printf("[GET] url: %s\n", url)
-			errorOut <- common.ErrInternal
 		}
+
+		errorOut <- common.ErrInternal
+		return
 	}
 }
 
+// Close does nothing on this handler because they all share the same singleton
 func (h *Handler) Close() error {
 	// nothing to "close" here
 	return nil
@@ -161,32 +237,40 @@ func (h *Handler) Close() error {
 /////////////////////////////////////
 // All the rest just return an error
 /////////////////////////////////////
+
+// Add is not implemented and returns common.ErrUnknownCmd
 func (h *Handler) Add(cmd common.SetRequest) error {
 	return common.ErrUnknownCmd
 }
 
+// Replace is not implemented and returns common.ErrUnknownCmd
 func (h *Handler) Replace(cmd common.SetRequest) error {
 	return common.ErrUnknownCmd
 }
 
+// Append is not implemented and returns common.ErrUnknownCmd
 func (h *Handler) Append(cmd common.SetRequest) error {
 	return common.ErrUnknownCmd
 }
 
+// Prepend is not implemented and returns common.ErrUnknownCmd
 func (h *Handler) Prepend(cmd common.SetRequest) error {
 	return common.ErrUnknownCmd
 }
 
+// GetE is not implemented and returns common.ErrUnknownCmd
 func (h *Handler) GetE(cmd common.GetRequest) (<-chan common.GetEResponse, <-chan error) {
 	errchan := make(chan error, 1)
 	errchan <- common.ErrUnknownCmd
 	return nil, errchan
 }
 
+// GAT is not implemented and returns common.ErrUnknownCmd
 func (h *Handler) GAT(cmd common.GATRequest) (common.GetResponse, error) {
 	return common.GetResponse{}, common.ErrUnknownCmd
 }
 
+// Touch is not implemented and returns common.ErrUnknownCmd
 func (h *Handler) Touch(cmd common.TouchRequest) error {
 	return common.ErrUnknownCmd
 }
