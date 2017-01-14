@@ -43,12 +43,12 @@ func New(host string, port int, cache string) handlers.HandlerConst {
 	}
 }
 
-func (h *Handler) makeUrl(key []byte) string {
+func (h *Handler) makeURL(key []byte) string {
 	return h.urlprefix + string(key)
 }
 
 func (h *Handler) Set(cmd common.SetRequest) error {
-	url := h.makeUrl(cmd.Key) + "?ttl=" + strconv.Itoa(int(cmd.Exptime))
+	url := h.makeURL(cmd.Key) + "?ttl=" + strconv.Itoa(int(cmd.Exptime))
 	req, err := http.NewRequest("PUT", url, bytes.NewBuffer(cmd.Data))
 	if err != nil {
 		return err
@@ -59,10 +59,12 @@ func (h *Handler) Set(cmd common.SetRequest) error {
 	if err != nil {
 		return err
 	}
-	// discard body to allow reuse of connection
+
+	// discard and close body to allow reuse of connection
 	if _, err := io.Copy(ioutil.Discard, res.Body); err != nil {
 		return err
 	}
+	res.Body.Close()
 
 	if res.StatusCode >= 200 && res.StatusCode < 300 {
 		return nil
@@ -74,7 +76,7 @@ func (h *Handler) Set(cmd common.SetRequest) error {
 }
 
 func (h *Handler) Delete(cmd common.DeleteRequest) error {
-	url := h.makeUrl(cmd.Key)
+	url := h.makeURL(cmd.Key)
 	req, err := http.NewRequest("DELETE", url, nil)
 	if err != nil {
 		// this would be a bad host, port, or cache
@@ -84,10 +86,12 @@ func (h *Handler) Delete(cmd common.DeleteRequest) error {
 	if err != nil {
 		return err
 	}
-	// discard body to allow reuse of connection
+
+	// discard and close body to allow reuse of connection
 	if _, err := io.Copy(ioutil.Discard, res.Body); err != nil {
 		return err
 	}
+	res.Body.Close()
 
 	switch res.StatusCode {
 	case 200:
@@ -111,7 +115,7 @@ func realHandleGet(h *Handler, cmd common.GetRequest, dataOut chan common.GetRes
 	defer close(dataOut)
 
 	for idx, key := range cmd.Keys {
-		url := h.makeUrl(key)
+		url := h.makeURL(key)
 		res, err := h.client.Get(url)
 		if err != nil {
 			errorOut <- err
@@ -119,6 +123,9 @@ func realHandleGet(h *Handler, cmd common.GetRequest, dataOut chan common.GetRes
 		}
 
 		data, err := ioutil.ReadAll(res.Body)
+
+		// Close budy to allow reuse of connection
+		res.Body.Close()
 
 		switch res.StatusCode {
 		case 200:
