@@ -177,6 +177,8 @@ outer:
 		}
 
 		for i := 0; i < NumTries; i++ {
+			retryDelay(i)
+
 			res, err := h.client.Do(req)
 			if err != nil {
 				errorOut <- err
