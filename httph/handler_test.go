@@ -180,7 +180,7 @@ func TestGet(t *testing.T) {
 	t.Run("Errors", func(t *testing.T) {
 
 		// Test all of the number of retries
-		for i := 0; i < httph.NumTries; i++ {
+		for i := 0; i < httph.DefaultNumTries; i++ {
 			t.Run(fmt.Sprintf("SuccessWith%dFailures", i), func(t *testing.T) {
 				s := newServer(0, i)
 				ts := httptest.NewServer(s)
@@ -215,7 +215,7 @@ func TestGet(t *testing.T) {
 
 		// finally, test the failure after all retries
 		t.Run("FailureAfterAllRetries", func(t *testing.T) {
-			s := newServer(0, httph.NumTries)
+			s := newServer(0, httph.DefaultNumTries)
 			ts := httptest.NewServer(s)
 			defer ts.Close()
 
@@ -234,8 +234,8 @@ func TestGet(t *testing.T) {
 				t.Logf("Properly received error: %s", err.Error())
 			}
 
-			if s.numReqs != httph.NumTries {
-				t.Fatalf("Expected number of requests to be %d but got %d", httph.NumTries, s.numReqs)
+			if s.numReqs != httph.DefaultNumTries {
+				t.Fatalf("Expected number of requests to be %d but got %d", httph.DefaultNumTries, s.numReqs)
 			}
 		})
 
@@ -328,7 +328,7 @@ func TestSet(t *testing.T) {
 	t.Run("Errors", func(t *testing.T) {
 
 		// Test all of the number of retries
-		for i := 0; i < httph.NumTries; i++ {
+		for i := 0; i < httph.DefaultNumTries; i++ {
 			t.Run(fmt.Sprintf("SuccessWith%dFailures", i), func(t *testing.T) {
 				s := newServer(0, i)
 				ts := httptest.NewServer(s)
@@ -363,7 +363,7 @@ func TestSet(t *testing.T) {
 
 		// finally, test the failure after all retries
 		t.Run("FailureAfterAllRetries", func(t *testing.T) {
-			s := newServer(0, httph.NumTries)
+			s := newServer(0, httph.DefaultNumTries)
 			ts := httptest.NewServer(s)
 			defer ts.Close()
 
@@ -380,8 +380,8 @@ func TestSet(t *testing.T) {
 				t.Errorf("Should have received an error.")
 			}
 
-			if s.numReqs != httph.NumTries {
-				t.Fatalf("Expected number of requests to be %d but got %d", httph.NumTries, s.numReqs)
+			if s.numReqs != httph.DefaultNumTries {
+				t.Fatalf("Expected number of requests to be %d but got %d", httph.DefaultNumTries, s.numReqs)
 			}
 		})
 
@@ -438,7 +438,7 @@ func TestDelete(t *testing.T) {
 	t.Run("Errors", func(t *testing.T) {
 
 		// Test all of the number of retries
-		for i := 0; i < httph.NumTries; i++ {
+		for i := 0; i < httph.DefaultNumTries; i++ {
 			t.Run(fmt.Sprintf("SuccessWith%dFailures", i), func(t *testing.T) {
 				s := newServer(0, i)
 				ts := httptest.NewServer(s)
@@ -470,7 +470,7 @@ func TestDelete(t *testing.T) {
 
 		// finally, test the failure after all retries
 		t.Run("FailureAfterAllRetries", func(t *testing.T) {
-			s := newServer(0, httph.NumTries)
+			s := newServer(0, httph.DefaultNumTries)
 			ts := httptest.NewServer(s)
 			defer ts.Close()
 
@@ -486,8 +486,8 @@ func TestDelete(t *testing.T) {
 				t.Errorf("Should have received an error.")
 			}
 
-			if s.numReqs != httph.NumTries {
-				t.Fatalf("Expected number of requests to be %d but got %d", httph.NumTries, s.numReqs)
+			if s.numReqs != httph.DefaultNumTries {
+				t.Fatalf("Expected number of requests to be %d but got %d", httph.DefaultNumTries, s.numReqs)
 			}
 		})
 

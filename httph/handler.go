@@ -25,25 +25,33 @@ import (
 
 	"time"
 
+	"github.com/netflix/rend-http/config"
 	"github.com/netflix/rend/common"
 	"github.com/netflix/rend/handlers"
 )
 
 const (
+	// NumTriesConfigName is the name of the dynamic config for the number of tries
+	NumTriesConfigName = "numTries"
 
-	// NumTries is the number of times the handler will try operations before
+	// DefaultNumTries is the number of times the handler will try operations before
 	// returning an error to the client
-	NumTries = 4
+	DefaultNumTries = 4
 	// 4 tries == 3 retries
 
-	// wait for 10, 40, and 90 ms successively on retries
-	retryDelayMultiplier = 10
+	// RetryDelayMultiplierConfigName is the name of the dynamic config for the retry delay multiplier
+	RetryDelayMultiplierConfigName = "retryDelayMultiplier"
+
+	// DefaultRetryDelayMultiplier is the default multiplier for the retry wait time,
+	// It is set up to wait for 10, 40, 90, etc ms successively on retries
+	DefaultRetryDelayMultiplier = 10
 )
 
 func retryDelay(try int) {
 	// wait for 10, 40, and 90 ms successively on retries
 	if try > 0 {
-		<-time.After(time.Duration(try) * time.Millisecond * retryDelayMultiplier)
+		mult := config.Get(RetryDelayMultiplierConfigName, DefaultRetryDelayMultiplier)
+		<-time.After(time.Duration(try) * time.Millisecond * time.Duration(mult))
 	}
 }
 
@@ -83,7 +91,8 @@ func (h *Handler) Set(cmd common.SetRequest) error {
 	}
 	req.Header.Set("Content-Type", "application/octet-stream")
 
-	for i := 0; i < NumTries; i++ {
+	tries := config.Get(NumTriesConfigName, DefaultNumTries)
+	for i := 0; i < tries; i++ {
 		retryDelay(i)
 
 		// Reset body
@@ -125,7 +134,8 @@ func (h *Handler) Delete(cmd common.DeleteRequest) error {
 		return err
 	}
 
-	for i := 0; i < NumTries; i++ {
+	tries := config.Get(NumTriesConfigName, DefaultNumTries)
+	for i := 0; i < tries; i++ {
 		retryDelay(i)
 
 		res, err := h.client.Do(req)
@@ -176,7 +186,8 @@ outer:
 			return
 		}
 
-		for i := 0; i < NumTries; i++ {
+		tries := config.Get(NumTriesConfigName, DefaultNumTries)
+		for i := 0; i < tries; i++ {
 			retryDelay(i)
 
 			res, err := h.client.Do(req)
