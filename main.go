@@ -18,16 +18,37 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"net/http"
+	_ "net/http/pprof"
 	"os"
+	"os/signal"
 	"runtime"
 	"strconv"
 	"strings"
 
 	"github.com/netflix/rend-http/httph"
 	"github.com/netflix/rend/handlers"
+	"github.com/netflix/rend/metrics"
 	"github.com/netflix/rend/orcas"
 	"github.com/netflix/rend/server"
 )
+
+func init() {
+	// Setting up signal handlers
+	sigs := make(chan os.Signal)
+	signal.Notify(sigs, os.Interrupt)
+
+	go func() {
+		<-sigs
+		panic("Keyboard Interrupt")
+	}()
+
+	// http debug and metrics endpoint
+	go http.ListenAndServe("localhost:11299", nil)
+
+	// metrics output prefix
+	metrics.SetPrefix("rend_http_")
+}
 
 type proxyinfo struct {
 	listenPort int
