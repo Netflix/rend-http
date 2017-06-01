@@ -28,6 +28,21 @@ import (
 	"github.com/netflix/rend-http/config"
 	"github.com/netflix/rend/common"
 	"github.com/netflix/rend/handlers"
+	"github.com/netflix/rend/metrics"
+)
+
+var (
+	MetricCmdGetHTTPRequestErrors = metrics.AddCounter("cmd_get_http_request_errors", nil)
+	MetricCmdGetStatus200         = metrics.AddCounter("cmd_get_status_200", nil)
+	MetricCmdGetStatus404         = metrics.AddCounter("cmd_get_status_404", nil)
+	MetricCmdGetStatus500         = metrics.AddCounter("cmd_get_status_500", nil)
+	MetricCmdGetStatusOther       = metrics.AddCounter("cmd_get_status_other", nil)
+
+	MetricCmdSetHTTPRequestErrors = metrics.AddCounter("cmd_set_http_request_errors", nil)
+	MetricCmdSetStatus2XX         = metrics.AddCounter("cmd_set_status_2xx", nil)
+	MetricCmdSetStatus400         = metrics.AddCounter("cmd_set_status_400", nil)
+	MetricCmdSetStatus500         = metrics.AddCounter("cmd_set_status_500", nil)
+	MetricCmdSetStatusOther       = metrics.AddCounter("cmd_set_status_other", nil)
 )
 
 const (
