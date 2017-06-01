@@ -45,6 +45,8 @@ const (
 	// DefaultRetryDelayMultiplier is the default multiplier for the retry wait time,
 	// It is set up to wait for 10, 40, 90, etc ms successively on retries
 	DefaultRetryDelayMultiplier = 10
+
+	evcacheFlagsHeaderName = "X-EVCache-Flags"
 )
 
 func retryDelay(try int) {
@@ -83,7 +85,7 @@ func (h *Handler) makeURL(key []byte) string {
 
 // Set performs an HTTP PUT request on the backend server
 func (h *Handler) Set(cmd common.SetRequest) error {
-	url := h.makeURL(cmd.Key) + "?ttl=" + strconv.Itoa(int(cmd.Exptime))
+	url := h.makeURL(cmd.Key) + "?ttl=" + strconv.Itoa(int(cmd.Exptime)) + "&flag=" + strconv.Itoa(int(cmd.Flags))
 
 	req, err := http.NewRequest("PUT", url, nil)
 	if err != nil {
@@ -196,6 +198,18 @@ outer:
 				return
 			}
 
+			var flags uint32
+			if s := res.Header.Get(evcacheFlagsHeaderName); s != "" {
+				flags64, err := strconv.ParseInt(s, 10, 32)
+
+				if err != nil {
+					log.Printf("Received unparseable flags from REST proxy: %v", s)
+					errorOut <- common.ErrInternal
+				}
+
+				flags = uint32(flags64)
+			}
+
 			data, err := ioutil.ReadAll(res.Body)
 
 			// Close body to allow reuse of connection
@@ -207,7 +221,7 @@ outer:
 					Miss:   false,
 					Quiet:  cmd.Quiet[idx],
 					Opaque: cmd.Opaques[idx],
-					Flags:  0,
+					Flags:  flags,
 					Key:    key,
 					Data:   data,
 				}
