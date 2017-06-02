@@ -30,6 +30,9 @@ import (
 	"github.com/netflix/rend/handlers"
 	"github.com/netflix/rend/metrics"
 	"github.com/netflix/rend/orcas"
+	"github.com/netflix/rend/protocol"
+	"github.com/netflix/rend/protocol/binprot"
+	"github.com/netflix/rend/protocol/textprot"
 	"github.com/netflix/rend/server"
 )
 
@@ -157,6 +160,7 @@ func main() {
 
 		go server.ListenAndServe(
 			largs,
+			[]protocol.Components{binprot.Components, textprot.Components},
 			server.Default,
 			orcas.L1Only,
 			httph.New(pi.proxyHost, pi.proxyPort, pi.cacheName),
