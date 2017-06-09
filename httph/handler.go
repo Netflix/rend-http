@@ -95,12 +95,12 @@ func New(host string, port int, cache string) handlers.HandlerConst {
 }
 
 func (h *Handler) makeURL(key []byte) string {
-	return h.urlprefix + string(key)
+	return h.urlprefix + string(key) + "?raw=true"
 }
 
 // Set performs an HTTP PUT request on the backend server
 func (h *Handler) Set(cmd common.SetRequest) error {
-	url := h.makeURL(cmd.Key) + "?ttl=" + strconv.Itoa(int(cmd.Exptime)) + "&flag=" + strconv.Itoa(int(cmd.Flags))
+	url := h.makeURL(cmd.Key) + "?raw=true&ttl=" + strconv.Itoa(int(cmd.Exptime)) + "&flag=" + strconv.Itoa(int(cmd.Flags))
 
 	req, err := http.NewRequest("PUT", url, nil)
 	if err != nil {
